@@ -59,12 +59,14 @@ private enum Validators {
 extension Configuration {
 
     func validate() {
-        guard !source.isEmpty else {
+        guard !sources.isEmpty else {
             Log.error("No sources provided.")
             exit(.invalidConfig)
         }
-        if case let .sources(sources) = source {
-            _ = sources.allPaths.map(Validators.isReadable(path:))
+        sources.forEach { source in
+            if case let .sources(sources) = source {
+                _ = sources.allPaths.map(Validators.isReadable(path:))
+            }
         }
 
         guard !templates.isEmpty else {
@@ -215,7 +217,7 @@ func runCLI() {
                 }
 
                 return try sourcery.processFiles(
-                    configuration.source,
+                    configuration.sources,
                     usingTemplates: configuration.templates,
                     output: configuration.output,
                     isDryRun: isDryRun,

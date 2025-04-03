@@ -217,7 +217,10 @@ public enum Source {
     case packages([Package])
 
     public init(dict: [String: Any], relativePath: Path) throws {
-        if let projects = (dict["project"] as? [[String: Any]]) ?? (dict["project"] as? [String: Any]).map({ [$0] }) {
+        if let packages = (dict["package"] as? [[String: Any]]) ?? (dict["package"] as? [String: Any]).map({ [$0] }) {
+            guard !packages.isEmpty else { throw Configuration.Error.invalidSources(message: "No packages provided.") }
+            self = try .packages(packages.map({ try Package(dict: $0, relativePath: relativePath) }))
+        } else if let projects = (dict["project"] as? [[String: Any]]) ?? (dict["project"] as? [String: Any]).map({ [$0] }) {
             guard !projects.isEmpty else { throw Configuration.Error.invalidSources(message: "No projects provided.") }
             self = try .projects(projects.map({ try Project(dict: $0, relativePath: relativePath) }))
         } else if let sources = dict["sources"] {
@@ -226,9 +229,6 @@ public enum Source {
             } catch {
                 throw Configuration.Error.invalidSources(message: "\(error)")
             }
-        } else if let packages = (dict["package"] as? [[String: Any]]) ?? (dict["package"] as? [String: Any]).map({ [$0] }) {
-            guard !packages.isEmpty else { throw Configuration.Error.invalidSources(message: "No packages provided.") }
-            self = try .packages(packages.map({ try Package(dict: $0, relativePath: relativePath) }))
         } else if dict["child"] != nil {
             throw Configuration.Error.internalError(message: "'child' should have been parsed already.")
         } else {
@@ -343,7 +343,7 @@ public struct Configuration {
         }
     }
 
-    public let source: Source
+    public let sources: [Source]
     public let templates: Paths
     public let output: Output
     public let cacheBasePath: Path
@@ -365,11 +365,21 @@ public struct Configuration {
     }
 
     public init(dict: [String: Any], relativePath: Path) throws {
-        let source = try Source(dict: dict, relativePath: relativePath)
-        guard !source.isEmpty else {
+        var sources = [Source]()
+        var mutableDict = dict
+        try dict.keys.forEach { key in
+            switch key {
+                case "sources", "project", "package":
+                    sources.append(try Source(dict: mutableDict, relativePath: relativePath))
+                    mutableDict.removeValue(forKey: key)
+                default:
+                    break
+            }
+        }
+        guard !sources.isEmpty else {
             throw Configuration.Error.invalidSources(message: "No sources provided.")
         }
-        self.source = source
+        self.sources = sources
 
         let templates: Paths
         guard let templatesDict = dict["templates"] else {
@@ -410,7 +420,7 @@ public struct Configuration {
     }
 
     public init(sources: Paths, templates: Paths, output: Path, cacheBasePath: Path, forceParse: [String], parseDocumentation: Bool, baseIndentation: Int, args: [String: NSObject]) {
-        self.source = .sources(sources)
+        self.sources = [.sources(sources)]
         self.templates = templates
         self.output = Output(output, linkTo: nil)
         self.cacheBasePath = cacheBasePath
